@@ -1,0 +1,50 @@
+#version 330 core
+
+in vec3 Normal;
+in vec3 FragPos;
+
+struct Light {
+    vec3 position;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+uniform vec3 viewPos;
+uniform samplerCube skybox;
+uniform Light light;
+uniform float screenGamma;
+
+out vec4 FragColor;
+
+void main(){
+    // general variables
+    vec3 ambient, diffuse, specular;
+    float spec;
+    vec3 normal = normalize(Normal);
+    vec3 lightDir = normalize(light.position - FragPos);
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, normal);
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+    float lambertian = max(dot(lightDir, normal), 0.0);
+
+    // Calculate color due to texture
+    vec3 incidence = normalize(FragPos - viewPos);
+    vec3 reflection = reflect(incidence, normalize(Normal));
+    vec4 fragTex = vec4(texture(skybox, reflection).rgb, 1.0);
+
+    // turn ambient off
+    // ambient = light.ambient * vec3(fragTex);
+
+    // diffuse is simply the color here
+    diffuse = vec3(fragTex);
+
+    // specular intensity to add shine spots
+    spec = pow(max(dot(normal, halfwayDir), 0.0), 1200.0);
+    specular = light.specular * (spec * vec3(fragTex));
+
+    // Gamma Correction
+    vec3 colorLinear = ambient + diffuse + specular;
+    vec3 colorGammaCorrected = pow(colorLinear, vec3(1.0 / screenGamma));
+    FragColor = vec4(colorGammaCorrected, 1.0);
+}

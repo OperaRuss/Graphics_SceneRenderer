@@ -1,0 +1,120 @@
+#version 330 core
+
+in vec3 FragPos;
+in vec3 Normal;
+in vec4 FragPosLightSpace;
+
+struct Material {
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+    float shininess;
+};
+
+struct Light {
+    vec3 position;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+uniform vec3 viewPos;
+uniform Material material;
+uniform Light light;
+uniform bool withBlinn;
+uniform float screenGamma;
+uniform bool highlightShadows;
+
+uniform sampler2D shadowMap;
+
+out vec4 FragColor;
+
+float ShadowCalculation(vec4 fragPosLightSpace){
+    // shadow algorithms sourced from learnopengl.com
+    // De-homogenize the coordinates
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+
+    // Normalize
+    projCoords = projCoords * 0.5 + 0.5;
+
+    // get closest depth value from light's perspective
+    float closestDepth = texture(shadowMap, projCoords.xy).r;
+    float currentDepth = projCoords.z;
+
+    // calculate bias to eliminate shadow acne
+    vec3 normal = normalize(Normal);
+    vec3 lightDir = normalize(light.position - FragPos);
+    float bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.005);
+
+    //convolve the shadow depth with a box kernel for smoothing
+    float shadow = 0.0;
+    vec2 texelSize = vec2(1.0) / textureSize(shadowMap, 0);
+    for(int x = -1; x <= 1; ++x){
+        for(int y = -1; y<= 1; ++y){
+           float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x,y) * texelSize).r;
+           shadow += (currentDepth - bias) > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0;
+
+    if(projCoords.z > 1.0)
+        shadow = 0.0;
+    return shadow;
+}
+
+void main(){
+    // general variables
+    vec3 ambient, diffuse, specular;
+    float spec;
+    vec3 normal = normalize(Normal);
+    vec3 lightDir = normalize(light.position - FragPos);
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, normal);
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+    float lambertian = max(dot(lightDir, normal), 0.0);
+
+    // ambient light value
+    ambient = light.ambient * material.ambient;
+
+    // calculate shadows
+    float shadow = ShadowCalculation(FragPosLightSpace);
+
+
+    if (lambertian > 0.0){
+        if(highlightShadows && shadow > 0.0){
+            ambient = vec3(1.0, 0.0, 0.0);
+            diffuse = vec3(1.0, 0.0, 0.0);
+            specular = vec3(1.0,0.0,0.0);
+        }
+        else{
+            // diffuse light calculation
+            diffuse = ((1.0 - shadow) * light.diffuse) * (lambertian * material.diffuse);
+
+            // specular light calculation
+            if(withBlinn){
+            spec = pow(max(dot(normal, halfwayDir), 0.0), 4.0 * material.shininess);
+            }
+            else{
+                spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+            }
+            specular = ((1.0 - shadow) * light.specular) * (spec * material.specular);
+        }
+    }
+    else{
+        if(highlightShadows){
+            ambient = vec3(1.0, 0.0, 0.0);
+            diffuse = vec3(1.0, 0.0, 0.0);
+            specular = vec3(1.0,0.0,0.0);
+        }
+        else{
+         specular = vec3(0.0);
+         diffuse = vec3(0.0);
+        }
+    }
+
+    // Gamma Correction
+    vec3 colorLinear = ambient + diffuse + specular;
+    vec3 colorGammaCorrected = pow(colorLinear, vec3(1.0 / screenGamma));
+    // Ouput Color
+    FragColor = vec4(colorGammaCorrected, 1.0);
+}
