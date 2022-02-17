@@ -5,6 +5,9 @@ Professor Claudio Silva
 Submission for __Russell Wustenberg (rw2873)__
 
 ---
+![](images/testScene.gif)
+
+---
 #Assignment 4: Extension of a 3D scene editor
 
 <a id="table-of-contents"/></a>
